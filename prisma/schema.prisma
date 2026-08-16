@@ -1,0 +1,71 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/receipt_expense_tracker/nextjs_space/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Entry {
+  id          String   @id @default(cuid())
+  type        String   // "RECEIPT" (income) or "EXPENSE"
+  date        DateTime
+  amount      Float
+  partyName   String?  // Customer name (receipts) or Vendor name (expenses)
+  checkNumber String?  // Check number, for expenses paid by check
+  category    String?  // Category for classifying items
+  notes       String?  // Free-form notes
+  receiptUrl  String?  // Cloud storage path/URL of an uploaded receipt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([type])
+  @@index([date])
+}
+
+// Managed category vocabulary layered on top of the free-text category field.
+model Category {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  categoryType String   @default("expense") // "income" | "expense" | "both"
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+}
+
+// Managed vendor/customer vocabulary layered on top of the free-text partyName field.
+model Vendor {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  partyType String   @default("both") // "vendor" | "customer" | "both"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// Plaid linked bank accounts. Each row represents one linked Item.
+model PlaidItem {
+  id          String   @id @default(cuid())
+  institutionName String?   // Friendly name of the bank
+  accessToken String          // Plaid access_token (encrypted at rest via Plaid)
+  itemId      String   @unique // Plaid item_id
+  cursor      String?          // transactions/sync cursor for incremental sync
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+// Authentication accounts. role controls access level:
+//   "admin" -> full access incl. category/vendor management
+//   "user"  -> standard access (enter/view/export)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
