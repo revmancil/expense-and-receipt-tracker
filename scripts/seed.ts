@@ -5,28 +5,8 @@
  * Uses upsert only — never deletes — so it is safe to re-run.
  */
 import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
-
-// Seed authentication accounts (idempotent upsert on email).
-async function seedUsers() {
-  const accounts = [
-    // Mandatory hidden test/admin account.
-    { email: 'abacus-f09d61dc@example.com', password: 'm9*dEMvSWb', name: 'Test Admin', role: 'admin' },
-    // Owner admin account for the client.
-    { email: 'michelle@tracker.app', password: 'Ledger2026!Mich', name: 'Michelle', role: 'admin' },
-  ]
-  for (const acc of accounts) {
-    const hashed = await bcrypt.hash(acc.password, 10)
-    await prisma.user.upsert({
-      where: { email: acc.email },
-      update: { role: acc.role, name: acc.name },
-      create: { email: acc.email, password: hashed, name: acc.name, role: acc.role },
-    })
-  }
-  console.log(`Seeded/verified ${accounts.length} auth accounts.`)
-}
 
 function inferType(types: Set<string>, incomeVal: string, expenseVal: string): string {
   const hasIncome = types.has('RECEIPT')
@@ -83,8 +63,6 @@ async function main() {
   }
 
   console.log(`Seeded/verified ${catCount} categories and ${vendorCount} vendors/customers.`)
-
-  await seedUsers()
 }
 
 main()
