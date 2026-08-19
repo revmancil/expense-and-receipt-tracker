@@ -3,8 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Runtime queries go through a pooled connection (e.g. PgBouncer) so
+  // serverless deployments (many short-lived Prisma Client instances,
+  // each with their own connection pool) don't exhaust the database's
+  // connection limit. `prisma db push`/`migrate` need a direct connection
+  // instead, since schema changes can't go through a transaction pooler.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Entry {
