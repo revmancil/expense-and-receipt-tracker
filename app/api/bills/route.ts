@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     const userId = (session!.user as any).id as string
 
     const body = await request?.json?.()
-    const { vendorId, vendorName, amount, dueDate, invoiceNumber, fileUrl, rawExtractedData } =
+    const { vendorId, vendorName, amount, dueDate, invoiceNumber, category, fileUrl, rawExtractedData } =
       body ?? {}
 
     const parsedAmount = Number(amount)
@@ -57,7 +57,9 @@ export async function POST(request: NextRequest) {
       }
       resolvedVendorId = vendor.id
     } else if (typeof vendorName === 'string' && vendorName.trim()) {
-      const vendor = await resolveOrCreateVendor(userId, vendorName)
+      const vendor = await resolveOrCreateVendor(userId, vendorName, {
+        category: typeof category === 'string' && category ? category : null,
+      })
       resolvedVendorId = vendor.id
     } else {
       return NextResponse.json({ error: 'vendorId or vendorName is required' }, { status: 400 })

@@ -15,6 +15,13 @@ function shouldServeInline(contentType: string): boolean {
   )
 }
 
+function buildStoragePath(fileName: string, folderPrefix: string, isPublic: boolean): string {
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  return isPublic
+    ? `${folderPrefix}public/uploads/${Date.now()}-${safeName}`
+    : `${folderPrefix}uploads/${Date.now()}-${safeName}`
+}
+
 export async function generatePresignedUploadUrl(
   fileName: string,
   contentType: string,
@@ -22,10 +29,7 @@ export async function generatePresignedUploadUrl(
 ): Promise<{ uploadUrl: string; cloud_storage_path: string }> {
   const s3 = createS3Client()
   const { bucketName, folderPrefix } = getBucketConfig()
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const cloud_storage_path = isPublic
-    ? `${folderPrefix}public/uploads/${Date.now()}-${safeName}`
-    : `${folderPrefix}uploads/${Date.now()}-${safeName}`
+  const cloud_storage_path = buildStoragePath(fileName, folderPrefix, isPublic)
 
   const command = new PutObjectCommand({
     Bucket: bucketName,
@@ -34,6 +38,29 @@ export async function generatePresignedUploadUrl(
   })
   const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 })
   return { uploadUrl, cloud_storage_path }
+}
+
+// Uploads bytes the server already holds (e.g. a multipart request body),
+// skipping the presigned-URL round trip used by client-driven uploads.
+export async function uploadFileBuffer(
+  fileName: string,
+  contentType: string,
+  buffer: Buffer,
+  isPublic = false
+): Promise<string> {
+  const s3 = createS3Client()
+  const { bucketName, folderPrefix } = getBucketConfig()
+  const cloud_storage_path = buildStoragePath(fileName, folderPrefix, isPublic)
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucketName,
+      Key: cloud_storage_path,
+      Body: buffer,
+      ContentType: contentType,
+    })
+  )
+  return cloud_storage_path
 }
 
 export async function getFileUrl(

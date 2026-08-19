@@ -6,10 +6,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { UploadCloud, Loader2, FileText, AlertTriangle, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { uploadReceipt } from '@/lib/upload-client'
 import type { ExtractionField } from '@/lib/bills/extraction'
+import { BILL_CATEGORIES, BILL_CATEGORY_LABELS, type BillCategory } from '@/lib/bills/category'
 
 interface VendorResolutionPreview {
   vendorId: string | null
@@ -22,6 +29,7 @@ interface BillDraftResponse {
   amount: number | null
   dueDate: string | null
   invoiceNumber: string | null
+  category: string | null
   flaggedFields: ExtractionField[]
   needsConfirmation: boolean
   vendorResolution: VendorResolutionPreview | null
@@ -48,17 +56,25 @@ export default function BillUploadZone({ onBillCreated }: BillUploadZoneProps) {
   const [amount, setAmount] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [category, setCategory] = useState<BillCategory>('OTHER')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const processFile = async (file: File) => {
+    const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf']
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error('Unsupported file type. Upload a PDF, PNG, or JPEG bill.')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File is too large (max 10MB).')
+      return
+    }
+
     setUploading(true)
     try {
-      const cloud_storage_path = await uploadReceipt(file)
-      const res = await fetch('/api/bills/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cloud_storage_path, fileName: file.name }),
-      })
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/bills/upload', { method: 'POST', body: formData })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.error ?? 'Extraction failed')
@@ -69,6 +85,9 @@ export default function BillUploadZone({ onBillCreated }: BillUploadZoneProps) {
       setAmount(data.amount != null ? String(data.amount) : '')
       setDueDate(data.dueDate ?? '')
       setInvoiceNumber(data.invoiceNumber ?? '')
+      setCategory(
+        BILL_CATEGORIES.includes(data.category as BillCategory) ? (data.category as BillCategory) : 'OTHER'
+      )
       if (data.needsConfirmation) {
         toast.message('Please confirm the highlighted fields before saving.')
       } else {
@@ -101,6 +120,7 @@ export default function BillUploadZone({ onBillCreated }: BillUploadZoneProps) {
     setAmount('')
     setDueDate('')
     setInvoiceNumber('')
+    setCategory('OTHER')
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -126,6 +146,7 @@ export default function BillUploadZone({ onBillCreated }: BillUploadZoneProps) {
           amount: parsedAmount,
           dueDate,
           invoiceNumber,
+          category,
           fileUrl: draft.fileUrl,
           rawExtractedData: draft.rawExtractedData,
         }),
@@ -277,6 +298,24 @@ export default function BillUploadZone({ onBillCreated }: BillUploadZoneProps) {
                   required
                 />
               </div>
+            </div>
+
+            <div>
+              <Label htmlFor="draft-category" className="mb-2 block text-sm font-medium">
+                Category
+              </Label>
+              <Select value={category} onValueChange={(v) => setCategory(v as BillCategory)}>
+                <SelectTrigger id="draft-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BILL_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {BILL_CATEGORY_LABELS[c]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>

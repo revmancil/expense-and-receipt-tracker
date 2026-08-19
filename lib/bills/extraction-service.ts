@@ -18,6 +18,8 @@ export interface BillDraft {
   amount: number | null
   dueDate: string | null
   invoiceNumber: string | null
+  /** Provider-suggested vendor category (e.g. "UTILITIES"), when the provider offers one. */
+  category: string | null
   rawExtractedData: RawExtractionPayload
   /** Fields the extractor could not confidently determine — user must confirm/fill these. */
   flaggedFields: ExtractionField[]
@@ -42,6 +44,7 @@ export async function runBillExtraction(
     amount: attempt.amount,
     dueDate: attempt.dueDate,
     invoiceNumber: attempt.invoiceNumber,
+    category: typeof raw['category'] === 'string' ? (raw['category'] as string) : null,
     rawExtractedData: attempt.rawExtractedData,
     flaggedFields: attempt.flaggedFields,
     needsConfirmation: attempt.flaggedFields.length > 0,
