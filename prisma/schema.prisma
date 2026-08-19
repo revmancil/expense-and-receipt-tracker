@@ -129,6 +129,7 @@ model Income {
   frequency        IncomeFrequency
   date             DateTime
   nextExpectedDate DateTime?
+  notes            String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @default(now()) @updatedAt
 

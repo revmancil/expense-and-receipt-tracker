@@ -61,3 +61,20 @@ export async function deleteFile(cloud_storage_path: string): Promise<void> {
   const { bucketName } = getBucketConfig()
   await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: cloud_storage_path }))
 }
+
+// Reads an uploaded file's bytes server-side, for pipelines (e.g. bill
+// extraction) that need to inspect the file rather than just link to it.
+export async function getFileBuffer(
+  cloud_storage_path: string
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const s3 = createS3Client()
+  const { bucketName } = getBucketConfig()
+  const result = await s3.send(
+    new GetObjectCommand({ Bucket: bucketName, Key: cloud_storage_path })
+  )
+  const bytes = await result.Body?.transformToByteArray()
+  return {
+    buffer: Buffer.from(bytes ?? []),
+    contentType: result.ContentType ?? 'application/octet-stream',
+  }
+}
