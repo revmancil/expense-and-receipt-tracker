@@ -1,22 +1,28 @@
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Runtime queries go through a pooled connection (e.g. PgBouncer) so
+  // serverless deployments (many short-lived Prisma Client instances,
+  // each with their own connection pool) don't exhaust the database's
+  // connection limit. `prisma db push`/`migrate` need a direct connection
+  // instead, since schema changes can't go through a transaction pooler.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Entry {
   id          String   @id @default(cuid())
-  type        String   // "RECEIPT" (income) or "EXPENSE"
+  type        String // "RECEIPT" (income) or "EXPENSE"
   date        DateTime
   amount      Float
-  partyName   String?  // Customer name (receipts) or Vendor name (expenses)
-  checkNumber String?  // Check number, for expenses paid by check
-  category    String?  // Category for classifying items
-  notes       String?  // Free-form notes
-  receiptUrl  String?  // Cloud storage path/URL of an uploaded receipt
+  partyName   String? // Customer name (receipts) or Vendor name (expenses)
+  checkNumber String? // Check number, for expenses paid by check
+  category    String? // Category for classifying items
+  notes       String? // Free-form notes
+  receiptUrl  String? // Cloud storage path/URL of an uploaded receipt
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
 
@@ -35,24 +41,34 @@ model Category {
 }
 
 // Managed vendor/customer vocabulary layered on top of the free-text partyName field.
+// Also serves as the vendor directory for Bills & Income tracking (category,
+// defaultPaymentMethod, userId below are used by that feature).
 model Vendor {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  partyType String   @default("both") // "vendor" | "customer" | "both"
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  partyType            String   @default("both") // "vendor" | "customer" | "both"
+  isActive             Boolean  @default(true)
+  userId               String? // owner for Bills & Income tracking; null for legacy/shared vendors
+  category             String? // Bills & Income vendor category (e.g. "Utilities", "Rent")
+  defaultPaymentMethod String? // Bills & Income default payment method (e.g. "ACH", "Credit Card")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bills Bill[]
+
+  @@index([userId])
 }
 
 // Plaid linked bank accounts. Each row represents one linked Item.
 model PlaidItem {
-  id          String   @id @default(cuid())
-  institutionName String?   // Friendly name of the bank
-  accessToken String          // Plaid access_token (encrypted at rest via Plaid)
-  itemId      String   @unique // Plaid item_id
-  cursor      String?          // transactions/sync cursor for incremental sync
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
+  id              String   @id @default(cuid())
+  institutionName String? // Friendly name of the bank
+  accessToken     String // Plaid access_token (encrypted at rest via Plaid)
+  itemId          String   @unique // Plaid item_id
+  cursor          String? // transactions/sync cursor for incremental sync
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
 }
 
 // Authentication accounts. role controls access level:
@@ -66,4 +82,66 @@ model User {
   role      String   @default("user")
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
+  vendors Vendor[]
+  bills   Bill[]
+  incomes Income[]
+}
+
+enum BillStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum IncomeFrequency {
+  ONE_TIME
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+// A bill/invoice, optionally auto-populated via document extraction
+// (rawExtractedData holds the unmodified OCR/vision payload for audit + reprocessing).
+model Bill {
+  id               String     @id @default(cuid())
+  userId           String
+  vendorId         String
+  amount           Float
+  dueDate          DateTime
+  status           BillStatus @default(PENDING)
+  fileUrl          String? // uploaded source document (receipt/invoice image or PDF)
+  rawExtractedData Json? // unmodified OCR/vision extraction payload, for audit + reprocessing
+  invoiceNumber    String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @default(now()) @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([vendorId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+// A recurring or one-time income entry, with the next expected occurrence
+// precomputed from frequency for calendar/cash-flow projections.
+model Income {
+  id               String          @id @default(cuid())
+  userId           String
+  source           String
+  amount           Float
+  frequency        IncomeFrequency
+  date             DateTime
+  nextExpectedDate DateTime?
+  notes            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([date])
+  @@index([nextExpectedDate])
 }
